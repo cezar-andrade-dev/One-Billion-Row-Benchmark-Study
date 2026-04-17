@@ -15,3 +15,13 @@ Multiple processing approaches will be evaluated using different programming lan
 ## Dependencies
 
 Acrescentar em lista conforme for projetando.
+
+## Resultados
+
+Mensionar o modelo do computador utilizado e onde serão expostos os dados comparativos
+
+## Conclusão
+
+O que foi concluído com o projeto?
+
+## Extras e observações
