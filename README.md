@@ -12,9 +12,17 @@ The challenge is to develop a program capable of reading this file and computing
 
 Multiple processing approaches will be evaluated using different programming languages and libraries. Ultimately, a benchmark will be developed to compare the execution times of the task.
 
-## Dependencies
+## Generation of the 1 Billion Rows Dataset
 
-Acrescentar em lista conforme for projetando.
+The cities dataset was obtained from: [Simplemaps](https://simplemaps.com/data/world-cities). With approximately 48,000 cities worldwide, the CSV file contains several attributes, such as "city","city_ascii","lat","lng","country", etc.
+
+To retrieve temperature data, the API from [Open-Meteo](https://open-meteo.com/) will be used. It is free, requires no registration or API key, and allows temperature queries based on latitude and longitude. A key advantage of using Open-Meteo is its support for batch requests. Therefore, a script will be implemented to send batch requests (up to ~1000 coordinates per request), reducing the total number of requests to approximately 50.
+
+Next, the requests will be processed asynchronously using **asyncio** and **aiohttp** to improve performance. The results will be saved incrementally to a CSV file (after each batch) to prevent data loss in case of failures during execution.
+
+After generating the new CSV file with approximately 48,000 rows in the format `"city, temperature"`, a separate Python script will be used to generate additional random samples for these cities in order to scale the dataset up to 1 billion rows.
+
+## Dependencies
 
 ## Resultados
 
