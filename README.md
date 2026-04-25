@@ -24,6 +24,17 @@ After generating the new CSV file with approximately 48,000 rows in the format `
 
 ## Dependencies
 
+### To Generate the 1 Billion Rows Dataset:
+
+- **Install the following dependencies:**
+  - `aiohttp` to perform asynchronous HTTP requests;
+  - `tqdm` to display a progress bar in the terminal.
+
+- **Python standard libraries:**
+  - `asyncio` to manage asynchronous batch execution;
+  - `csv` to read the input CSV file and write the output CSV file;
+  - `os` to check whether the input file exists.
+
 ## Resultados
 
 Mensionar o modelo do computador utilizado e onde serão expostos os dados comparativos
