@@ -29,7 +29,89 @@ def load_cities(filepath: str, max_cities: int | None) -> list[dict]:
             except (ValueError, KeyError):
                 # Ignore lines with empty or invalid values
                 continue
-    print(cities)
+    return cities
+    
+async def fetch_batch(
+    session: aiohttp.ClientSession,
+    batch: list[dict],
+    pbar: tqdm,
+    retries: int = 3
+) -> list[dict]:
+    # Sends a batch of cities to Open-Meteo and returns their current temperatures.
+   
+    lats = ",".join(str(c["lat"]) for c in batch)
+    lngs = ",".join(str(c["lng"]) for c in batch)
+ 
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        f"?latitude={lats}"
+        f"&longitude={lngs}"
+        "&current_weather=true"
+        "&forecast_days=1"
+    )
+ 
+    for attempt in range(1, retries + 1):
+        try:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+ 
+                results = []
+                # Se for batch, a API retorna uma lista; se for 1 cidade, retorna dict
+                if isinstance(data, dict):
+                    data = [data]
+ 
+                for city, info in zip(batch, data):
+                    temp = info.get("current_weather", {}).get("temperature", None)
+                    results.append({
+                        "city":        city["city"],
+                        "temperature": temp,
+                    })
+ 
+                pbar.update(len(batch))
+                return results
+ 
+        except Exception as e:
+            if attempt == retries:
+                print(f"\n Batch failed after {retries} attempts: {e}")
+                # Returns null temperature for batch errors.
+                pbar.update(len(batch))
+                return [{"city": c["city"], "temperature": None} for c in batch]
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff before retrying.
+
+async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
+    #Splits cities into batches and processes them asynchronously.
+
+    batches = [cities[i:i + BATCH_SIZE] for i in range(0, len(cities), BATCH_SIZE)]
+    all_results = []
+ 
+    print(f"\n{len(cities)} Loaded cities — {len(batches)} batches of {BATCH_SIZE}\n")
+ 
+    async with aiohttp.ClientSession() as session:
+        with tqdm(total=len(cities), unit="city", desc="fetching temperature") as pbar:
+            # Processa os batches com concorrência limitada para não sobrecarregar a API
+            semaphore = asyncio.Semaphore(5)
+ 
+            async def bounded_fetch(batch):
+                async with semaphore:
+                    return await fetch_batch(session, batch, pbar)
+ 
+            tasks = [bounded_fetch(b) for b in batches]
+            results_per_batch = await asyncio.gather(*tasks)
+ 
+            for batch_result in results_per_batch:
+                all_results.extend(batch_result)
+ 
+    return all_results
+ 
+ 
+def save_results(results: list[dict], filepath: str) -> None:
+    #Saves the final CSV with city and temperature.
+    with open(filepath, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=["city", "temperature"])
+        writer.writeheader()
+        writer.writerows(results)
+    print(f"\n Saved File: {filepath}  ({len(results)} Cities)")
 
 async def main():
     if not os.path.exists(INPUT_FILE):
@@ -37,8 +119,8 @@ async def main():
         return
  
     cities  = load_cities(INPUT_FILE, MAX_CITIES)
-    #results = await fetch_all_temperatures(cities)
-    #   save_results(results, OUTPUT_FILE)
+    results = await fetch_all_temperatures(cities)
+    save_results(results, OUTPUT_FILE)
  
  
 if __name__ == "__main__":
