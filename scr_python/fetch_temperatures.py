@@ -1,6 +1,5 @@
 # Extracts location data from the `worldcities.csv` file and retrieves temperature values.
 
-
 import asyncio
 import aiohttp
 import csv
@@ -8,8 +7,8 @@ import os
 from tqdm import tqdm
 
 # Config
-INPUT_FILE = "data\worldcities_teste.csv"
-OUTPUT_FILE = "cities_temperatures.csv"
+INPUT_FILE = "C:\Comum\Projetos\one_billion_rows\One-Billion-Row-Benchmark-Study\data\worldcities.csv"
+OUTPUT_FILE = "C:\Comum\Projetos\one_billion_rows\One-Billion-Row-Benchmark-Study\data\cities_temperatures.csv"
 BATCH_SIZE = 1000
 MAX_CITIES = None
 
@@ -22,7 +21,7 @@ def load_cities(filepath: str, max_cities: int | None) -> list[dict]:
                 break
             try:
                 cities.append({
-                    "city": row["city"],
+                    "city": row["city_ascii"],
                     "lat":  float(row["lat"]),
                     "lng":  float(row["lng"]),
                 })
