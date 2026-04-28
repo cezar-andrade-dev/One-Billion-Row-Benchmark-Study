@@ -3,16 +3,18 @@
 import asyncio
 import aiohttp
 import csv
-import os
 from pathlib import Path
 from tqdm import tqdm
 
-# Config
+# Config ---------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 INPUT_FILE = BASE_DIR / "data/worldcities.csv"
 OUTPUT_FILE = BASE_DIR / "data/cities_temperatures.csv"
 BATCH_SIZE = 100
 MAX_CITIES = None
+CONCURRENCY = 2
+DELAY_SECONDS = 0.5 
+# -------------------------------------------------------------------
 
 def load_cities(filepath: Path, max_cities: int | None) -> list[dict]:
     cities = []
@@ -36,7 +38,7 @@ async def fetch_batch(
     session: aiohttp.ClientSession,
     batch: list[dict],
     pbar: tqdm,
-    retries: int = 3
+    retries: int = 5
 ) -> list[dict]:
     # Sends a batch of cities to Open-Meteo and returns their current temperatures.
  
@@ -51,6 +53,16 @@ async def fetch_batch(
     for attempt in range(1, retries + 1):
         try:
             async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+
+                # If a 429 response is received, respect the API’s Retry-After before retrying
+                if resp.status == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 10 * attempt))
+                    print(f"\n Rate limit reached — waiting {retry_after}s before retrying...")
+                    await asyncio.sleep(retry_after)
+                    continue
+ 
                 resp.raise_for_status()
                 data = await resp.json()
 
@@ -76,6 +88,11 @@ async def fetch_batch(
                 return [{"city": c["city"], "temperature": None} for c in batch]
             await asyncio.sleep(2 ** attempt)  # Exponential backoff before retrying.
 
+    # Fallback
+    pbar.update(len(batch))
+    return [{"city": c["city"], "temperature": None} for c in batch]
+
+
 async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
     #Splits cities into batches and processes them asynchronously.
 
@@ -83,15 +100,19 @@ async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
     all_results = []
  
     print(f"\n{len(cities)} Loaded cities — {len(batches)} batches of {BATCH_SIZE}\n")
- 
+    print(f"⚙️  Concurrency: {CONCURRENCY} Delay: {DELAY_SECONDS}s between batches\n")
+
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+
     async with aiohttp.ClientSession() as session:
         with tqdm(total=len(cities), unit="city", desc="fetching temperature") as pbar:
-            semaphore = asyncio.Semaphore(5)
  
             async def bounded_fetch(batch):
                 async with semaphore:
-                    return await fetch_batch(session, batch, pbar)
- 
+                    result = await fetch_batch(session, batch, pbar)
+                    await asyncio.sleep(DELAY_SECONDS)  # pausa após cada batch
+                    return result
+                
             tasks = [bounded_fetch(b) for b in batches]
             results_per_batch = await asyncio.gather(*tasks)
  
