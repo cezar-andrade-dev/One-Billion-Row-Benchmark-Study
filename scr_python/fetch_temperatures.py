@@ -4,15 +4,17 @@ import asyncio
 import aiohttp
 import csv
 import os
+from pathlib import Path
 from tqdm import tqdm
 
 # Config
-INPUT_FILE = "C:\Comum\Projetos\one_billion_rows\One-Billion-Row-Benchmark-Study\data\worldcities.csv"
-OUTPUT_FILE = "C:\Comum\Projetos\one_billion_rows\One-Billion-Row-Benchmark-Study\data\cities_temperatures.csv"
-BATCH_SIZE = 1000
+BASE_DIR = Path(__file__).parent
+INPUT_FILE = BASE_DIR / "data/worldcities.csv"
+OUTPUT_FILE = BASE_DIR / "data/cities_temperatures.csv"
+BATCH_SIZE = 100
 MAX_CITIES = None
 
-def load_cities(filepath: str, max_cities: int | None) -> list[dict]:
+def load_cities(filepath: Path, max_cities: int | None) -> list[dict]:
     cities = []
     with open(filepath, newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -37,29 +39,25 @@ async def fetch_batch(
     retries: int = 3
 ) -> list[dict]:
     # Sends a batch of cities to Open-Meteo and returns their current temperatures.
-   
-    lats = ",".join(str(c["lat"]) for c in batch)
-    lngs = ",".join(str(c["lng"]) for c in batch)
  
-    url = (
-        "https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lats}"
-        f"&longitude={lngs}"
-        "&current_weather=true"
-        "&forecast_days=1"
-    )
+    url = "https://api.open-meteo.com/v1/forecast"
+    payload = {
+        "latitude":        [c["lat"] for c in batch],
+        "longitude":       [c["lng"] for c in batch],
+        "current_weather": True,
+        "forecast_days":   1,
+    }    
  
     for attempt in range(1, retries + 1):
         try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
- 
-                results = []
-                # Se for batch, a API retorna uma lista; se for 1 cidade, retorna dict
+
                 if isinstance(data, dict):
                     data = [data]
- 
+                
+                results = []                
                 for city, info in zip(batch, data):
                     temp = info.get("current_weather", {}).get("temperature", None)
                     results.append({
@@ -88,7 +86,6 @@ async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
  
     async with aiohttp.ClientSession() as session:
         with tqdm(total=len(cities), unit="city", desc="fetching temperature") as pbar:
-            # Processa os batches com concorrência limitada para não sobrecarregar a API
             semaphore = asyncio.Semaphore(5)
  
             async def bounded_fetch(batch):
@@ -104,7 +101,7 @@ async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
     return all_results
  
  
-def save_results(results: list[dict], filepath: str) -> None:
+def save_results(results: list[dict], filepath: Path) -> None:
     #Saves the final CSV with city and temperature.
     with open(filepath, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=["city", "temperature"])
@@ -113,7 +110,7 @@ def save_results(results: list[dict], filepath: str) -> None:
     print(f"\n Saved File: {filepath}  ({len(results)} Cities)")
 
 async def main():
-    if not os.path.exists(INPUT_FILE):
+    if not INPUT_FILE.exists():
         print(f" File '{INPUT_FILE}' not found.")
         return
  
