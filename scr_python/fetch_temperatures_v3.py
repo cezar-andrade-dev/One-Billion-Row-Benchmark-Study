@@ -29,7 +29,7 @@ def load_cities(filepath: Path, max_cities: int | None) -> list[str]:
         for i, row in enumerate(reader):
             if max_cities and i >= max_cities:
                 break
-            city = row.get("city", "").strip()
+            city = row.get("city_ascii", "").strip()
             if city:
                 cities.append(city)
     return cities
