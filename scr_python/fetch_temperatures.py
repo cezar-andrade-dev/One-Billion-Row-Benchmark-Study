@@ -15,9 +15,9 @@ INPUT_FILE    = DATA_DIR / "worldcities.csv"
 OUTPUT_FILE   = DATA_DIR / "cities_temperatures.csv"
 load_dotenv(ENV_PATH)
 API_KEY       = os.getenv("WEATHER_API_KEY")
-CONCURRENCY   = 10                     # requisições simultâneas
-DELAY_SECONDS = 0.1                    # pausa entre requisições (ms)
-MAX_CITIES    = None                   # None = todas | ex: 500 = primeiras 500
+CONCURRENCY   = 10                     # simultaneous requisitions
+DELAY_SECONDS = 0.1                    # pause between requisitions (ms)
+MAX_CITIES    = None                   # None = all | ex: 500 = first 500
 # ──────────────────────────────────────────────────────────────────────────────
 
 
