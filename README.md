@@ -16,24 +16,34 @@ Multiple processing approaches will be evaluated using different programming lan
 
 The cities dataset was obtained from: [Simplemaps](https://simplemaps.com/data/world-cities). With approximately 48,000 cities worldwide, the CSV file contains several attributes, such as "city","city_ascii","lat","lng","country", etc.
 
-To retrieve temperature data, the API from [Open-Meteo](https://open-meteo.com/) will be used. It is free, requires no registration or API key, and allows temperature queries based on latitude and longitude. A key advantage of using Open-Meteo is its support for batch requests. Therefore, a script will be implemented to send batch requests (up to ~1000 coordinates per request), reducing the total number of requests to approximately 50.
+To retrieve temperature data, the API from [Weather API](https://www.weatherapi.com) will be used. It is free, but requires registration and API key, and allows temperature queries based on city names. The advantage of using the WeatherAPI is its limit of 1 million requests for the free tier; therefore, individual requests were made to the WeatherAPI with a concurrency of 10 simultaneous requests.
 
-Next, the requests will be processed asynchronously using **asyncio** and **aiohttp** to improve performance. The results will be saved incrementally to a CSV file (after each batch) to prevent data loss in case of failures during execution.
+Next, the requests will be processed asynchronously using **asyncio** and **aiohttp** to improve performance. The results will be saved to a CSV file.
 
 After generating the new CSV file with approximately 48,000 rows in the format `"city, temperature"`, a separate Python script will be used to generate additional random samples for these cities in order to scale the dataset up to 1 billion rows.
 
 ## Dependencies
 
-### To Generate the 1 Billion Rows Dataset:
+### 1 Billion row csv file
 
-- **Install the following dependencies:**
-  - `aiohttp` to perform asynchronous HTTP requests;
-  - `tqdm` to display a progress bar in the terminal.
+#### External Libraries
 
-- **Python standard libraries:**
-  - `asyncio` to manage asynchronous batch execution;
-  - `csv` to read the input CSV file and write the output CSV file;
-  - `os` to check whether the input file exists.
+- **aiohttp** — Asynchronous HTTP requests to the WeatherAPI
+- **tqdm** — Progress bar for tracking city processing
+- **python-dotenv** — Loading environment variables from `.env` file
+
+#### Native Python Libraries
+
+- **asyncio** — Manages asynchronous execution and concurrency control
+- **csv** — Reads the input CSV and writes the output CSV
+- **pathlib** — Cross-platform file path handling
+- **os** — Reads environment variables loaded by python-dotenv
+
+#### Installation
+
+```bash
+poetry add aiohttp tqdm python-dotenv
+```
 
 ## Resultados
 

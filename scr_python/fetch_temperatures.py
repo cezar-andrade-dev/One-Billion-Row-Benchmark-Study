@@ -1,140 +1,135 @@
-# Extracts location data from the `worldcities.csv` file and retrieves temperature values.
-
 import asyncio
 import aiohttp
 import csv
+import os
 from pathlib import Path
 from tqdm import tqdm
+from dotenv import load_dotenv
 
-# Config ---------------------------------------------------------
-BASE_DIR = Path(__file__).parent
-INPUT_FILE = BASE_DIR / "data/worldcities.csv"
-OUTPUT_FILE = BASE_DIR / "data/cities_temperatures.csv"
-BATCH_SIZE = 100
-MAX_CITIES = None
-DELAY_SECONDS = 2.0 
-# -------------------------------------------------------------------
 
-def load_cities(filepath: Path, max_cities: int | None) -> list[dict]:
+# ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
+BASE_DIR      = Path(__file__).parent
+DATA_DIR      = BASE_DIR.parent / "data"
+ENV_PATH      = BASE_DIR.parent / ".env"
+INPUT_FILE    = DATA_DIR / "worldcities.csv"
+OUTPUT_FILE   = DATA_DIR / "cities_temperatures.csv"
+load_dotenv(ENV_PATH)
+API_KEY       = os.getenv("WEATHER_API_KEY")
+CONCURRENCY   = 10                     # requisições simultâneas
+DELAY_SECONDS = 0.1                    # pausa entre requisições (ms)
+MAX_CITIES    = None                   # None = todas | ex: 500 = primeiras 500
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def load_cities(filepath: Path, max_cities: int | None) -> list[str]:
+    """Reads the CSV file and returns only the list of city names."""
     cities = []
     with open(filepath, newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for i, row in enumerate(reader):
             if max_cities and i >= max_cities:
                 break
-            try:
-                cities.append({
-                    "city": row["city_ascii"],
-                    "lat":  float(row["lat"]),
-                    "lng":  float(row["lng"]),
-                })
-            except (ValueError, KeyError):
-                # Ignore lines with empty or invalid values
-                continue
+            city = row.get("city_ascii", "").strip()
+            if city:
+                cities.append(city)
     return cities
-    
-async def fetch_batch(
+
+
+async def fetch_temperature(
     session: aiohttp.ClientSession,
-    batch: list[dict],
-    retries: int = 5
-) -> list[dict]:
-    # Sends a batch of cities to Open-Meteo and returns their current temperatures.
- 
-    url = "https://api.open-meteo.com/v1/forecast"
-    payload = {
-        "latitude":        [c["lat"] for c in batch],
-        "longitude":       [c["lng"] for c in batch],
-        "current_weather": True,
-        "forecast_days":   1,
-    }    
- 
-    for attempt in range(1, retries + 1):
-        try:
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                
-                # If a 429 response is received, respect the API’s Retry-After before retrying
-                if resp.status == 429:
-                    retry_after = int(resp.headers.get("Retry-After", 15 * attempt))
-                    tqdm.write(f"\n Rate limit reached — waiting {retry_after}s before retrying...")
-                    await asyncio.sleep(retry_after)
-                    continue
- 
-                resp.raise_for_status()
-                data = await resp.json()
+    city: str,
+    semaphore: asyncio.Semaphore,
+    retries: int = 3
+) -> dict:
+    """Retrieves the current temperature of a city from the WeatherAPI."""
+    url = "https://api.weatherapi.com/v1/current.json"
+    params = {"key": API_KEY, "q": city, "aqi": "no"}
 
-                if isinstance(data, dict):
-                    data = [data]
-                
-                results = []                
-                for city, info in zip(batch, data):
-                    temp = info.get("current_weather", {}).get("temperature", None)
-                    results.append({
-                        "city":        city["city"],
-                        "temperature": temp,
-                    })
- 
-                pbar.update(len(batch))
-                return results
- 
-        except Exception as e:
-            if attempt == retries:
-                print(f"\n Batch failed after {retries} attempts: {e}")
-                # Returns null temperature for batch errors.
-                pbar.update(len(batch))
-                return [{"city": c["city"], "temperature": None} for c in batch]
-            await asyncio.sleep(2 ** attempt)  # Exponential backoff before retrying.
+    async with semaphore:
+        for attempt in range(1, retries + 1):
+            try:
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
 
-    # Fallback
-    pbar.update(len(batch))
-    return [{"city": c["city"], "temperature": None} for c in batch]
+                    if resp.status == 429:
+                        wait = 10 * attempt
+                        tqdm.write(f"⏳ Rate limit — waiting {wait}s...")
+                        await asyncio.sleep(wait)
+                        continue
+
+                    if resp.status == 400:
+                        # City not found at WeatherAPI
+                        return {"city": city, "temperature": None, "status": "not_found"}
+
+                    resp.raise_for_status()
+                    data = await resp.json()
+                    temp = data["current"]["temp_c"]
+                    return {"city": city, "temperature": temp, "status": "ok"}
+
+            except Exception as e:
+                if attempt == retries:
+                    tqdm.write(f"Fail in '{city}': {e}")
+                    return {"city": city, "temperature": None, "status": "error"}
+                await asyncio.sleep(2 ** attempt)
+
+    return {"city": city, "temperature": None, "status": "error"}
 
 
-async def fetch_all_temperatures(cities: list[dict]) -> list[dict]:
-    #Splits cities into batches and processes them asynchronously.
-
-    batches = [cities[i:i + BATCH_SIZE] for i in range(0, len(cities), BATCH_SIZE)]
-    all_results = []
- 
-    print(f"\n{len(cities)} Loaded cities — {len(batches)} batches of {BATCH_SIZE}\n")
-    print(f"⚙️  Concurrency: {CONCURRENCY} Delay: {DELAY_SECONDS}s between batches\n")
+async def fetch_all_temperatures(cities: list[str]) -> list[dict]:
+    """Processes all cities asynchronously with controlled concurrency."""
+    print(f"\n📍 {len(cities)} cidades carregadas")
+    print(f"⚙️  Concurrency: {CONCURRENCY} | Delay: {DELAY_SECONDS}s\n")
 
     semaphore = asyncio.Semaphore(CONCURRENCY)
+    results = []
 
     async with aiohttp.ClientSession() as session:
-        with tqdm(total=len(cities), unit="city", desc="fetching temperature") as pbar:
- 
-            async def bounded_fetch(batch):
-                async with semaphore:
-                    result = await fetch_batch(session, batch, pbar)
-                    await asyncio.sleep(DELAY_SECONDS)  # pausa após cada batch
-                    return result
-                
-            tasks = [bounded_fetch(b) for b in batches]
-            results_per_batch = await asyncio.gather(*tasks)
- 
-            for batch_result in results_per_batch:
-                all_results.extend(batch_result)
- 
-    return all_results
- 
- 
+        with tqdm(total=len(cities), unit="city", desc="searching for temperatures") as pbar:
+
+            async def fetch_and_update(city):
+                result = await fetch_temperature(session, city, semaphore)
+                await asyncio.sleep(DELAY_SECONDS)
+                pbar.update(1)
+                return result
+
+            tasks = [fetch_and_update(city) for city in cities]
+            results = await asyncio.gather(*tasks)
+
+    return results
+
+
 def save_results(results: list[dict], filepath: Path) -> None:
-    #Saves the final CSV with city and temperature.
+    """Saves the final CSV file with city and temperature."""
     with open(filepath, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=["city", "temperature"])
         writer.writeheader()
-        writer.writerows(results)
-    print(f"\n Saved File: {filepath}  ({len(results)} Cities)")
+        for r in results:
+            if r["temperature"]:
+                writer.writerow({"city": r["city"], "temperature": r["temperature"]})
+
+    total      = len(results)
+    ok         = sum(1 for r in results if r["status"] == "ok")
+    not_found  = sum(1 for r in results if r["status"] == "not_found")
+    errors     = sum(1 for r in results if r["status"] == "error")
+
+    print(f"\n✅ File saved: {filepath}")
+    print(f"   ✔  {ok} cities with temperature")
+    print(f"   ✘  {not_found} cities not found in API")
+    print(f"   ⚠  {errors} erros")
+
 
 async def main():
-    if not INPUT_FILE.exists():
-        print(f" File '{INPUT_FILE}' not found.")
+    if API_KEY == "YOUR_KEY_HERE":
+        print("❌ Configure your API_KEY on top of the script.")
         return
- 
+
+    if not INPUT_FILE.exists():
+        print(f"❌ File '{INPUT_FILE}' not found.")
+        return
+
     cities  = load_cities(INPUT_FILE, MAX_CITIES)
     results = await fetch_all_temperatures(cities)
     save_results(results, OUTPUT_FILE)
- 
- 
+
+
 if __name__ == "__main__":
     asyncio.run(main())
