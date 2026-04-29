@@ -6,8 +6,8 @@ from tqdm import tqdm
 
 # ─── CONFIGURAÇÕES ────────────────────────────────────────────────────────────
 BASE_DIR      = Path(__file__).parent
-INPUT_FILE    = BASE_DIR / "worldcities.csv"
-OUTPUT_FILE   = BASE_DIR / "cities_temperatures.csv"
+INPUT_FILE    = BASE_DIR / "data/worldcities_teste.csv"
+OUTPUT_FILE   = BASE_DIR / "data/cities_temperatures_teste.csv"
 BATCH_SIZE    = 100    # cidades por requisição
 MAX_CITIES    = None   # None = todas | ex: 500 = apenas as 500 primeiras
 DELAY_SECONDS = 2.0    # pausa entre cada batch — aumente se ainda receber 429
