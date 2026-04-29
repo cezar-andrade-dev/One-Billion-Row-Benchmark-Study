@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 BASE_DIR      = Path(__file__).parent
 DATA_DIR      = BASE_DIR.parent / "data"
 ENV_PATH      = BASE_DIR.parent / ".env"
-INPUT_FILE    = DATA_DIR / "worldcities.csv"
-OUTPUT_FILE   = DATA_DIR / "cities_temperatures.csv"
+INPUT_FILE    = DATA_DIR / "cities_not_found.csv"
+OUTPUT_FILE   = DATA_DIR / "cities_not_found_temperatures.csv"
 load_dotenv(ENV_PATH)
 API_KEY       = os.getenv("WEATHER_API_KEY")
 CONCURRENCY   = 10                     # requisições simultâneas
