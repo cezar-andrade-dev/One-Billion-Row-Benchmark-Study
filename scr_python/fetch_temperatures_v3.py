@@ -11,8 +11,8 @@ from dotenv import load_dotenv
 BASE_DIR      = Path(__file__).parent
 DATA_DIR      = BASE_DIR.parent / "data"
 ENV_PATH      = BASE_DIR.parent / ".env"
-INPUT_FILE    = DATA_DIR / "cities_not_found.csv"
-OUTPUT_FILE   = DATA_DIR / "cities_not_found_temperatures.csv"
+INPUT_FILE    = DATA_DIR / "worldcities_teste.csv"
+OUTPUT_FILE   = DATA_DIR / "cities_temperatures_v3.csv"
 load_dotenv(ENV_PATH)
 API_KEY       = os.getenv("WEATHER_API_KEY")
 CONCURRENCY   = 10                     # requisições simultâneas
@@ -103,7 +103,8 @@ def save_results(results: list[dict], filepath: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=["city", "temperature"])
         writer.writeheader()
         for r in results:
-            writer.writerow({"city": r["city"], "temperature": r["temperature"]})
+            if r["temperature"]:
+                writer.writerow({"city": r["city"], "temperature": r["temperature"]})
 
     total      = len(results)
     ok         = sum(1 for r in results if r["status"] == "ok")
