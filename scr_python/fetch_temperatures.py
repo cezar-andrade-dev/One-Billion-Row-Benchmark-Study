@@ -12,8 +12,7 @@ INPUT_FILE = BASE_DIR / "data/worldcities.csv"
 OUTPUT_FILE = BASE_DIR / "data/cities_temperatures.csv"
 BATCH_SIZE = 100
 MAX_CITIES = None
-CONCURRENCY = 2
-DELAY_SECONDS = 0.5 
+DELAY_SECONDS = 2.0 
 # -------------------------------------------------------------------
 
 def load_cities(filepath: Path, max_cities: int | None) -> list[dict]:
@@ -37,7 +36,6 @@ def load_cities(filepath: Path, max_cities: int | None) -> list[dict]:
 async def fetch_batch(
     session: aiohttp.ClientSession,
     batch: list[dict],
-    pbar: tqdm,
     retries: int = 5
 ) -> list[dict]:
     # Sends a batch of cities to Open-Meteo and returns their current temperatures.
@@ -53,13 +51,11 @@ async def fetch_batch(
     for attempt in range(1, retries + 1):
         try:
             async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-
+                
                 # If a 429 response is received, respect the API’s Retry-After before retrying
                 if resp.status == 429:
-                    retry_after = int(resp.headers.get("Retry-After", 10 * attempt))
-                    print(f"\n Rate limit reached — waiting {retry_after}s before retrying...")
+                    retry_after = int(resp.headers.get("Retry-After", 15 * attempt))
+                    tqdm.write(f"\n Rate limit reached — waiting {retry_after}s before retrying...")
                     await asyncio.sleep(retry_after)
                     continue
  
